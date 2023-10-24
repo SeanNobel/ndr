@@ -1,7 +1,7 @@
 from ..visualize import plot
 from ..utils import use_gpu, seed, U
 from ..data_structures import DotDict
-import framework
+import ndr.framework as framework
 import os
 import shutil
 import sys
@@ -26,10 +26,14 @@ class TrainingHelper:
     class Dirs:
         pass
 
-    def __init__(self, register_args: Optional[Callable[[ArgumentParser],None]],
-                 wandb_project_name: Optional[str] = None,
-                 log_async: bool=False, extra_dirs: List[str]=[], restore: Optional[str] = None):
-
+    def __init__(
+        self,
+        register_args: Optional[Callable[[ArgumentParser], None]],
+        wandb_project_name: Optional[str] = None,
+        log_async: bool = False,
+        extra_dirs: List[str] = [],
+        restore: Optional[str] = None,
+    ):
         self.is_sweep = False
         self.log_async = log_async
         self.wandb_project_name = wandb_project_name
@@ -44,6 +48,7 @@ class TrainingHelper:
     def print_env_info(self):
         try:
             import pkg_resources
+
             print("---------------- Environment information: ----------------")
             installed_packages = pkg_resources.working_set
             print(list(sorted(["%s==%s" % (i.key, i.version) for i in installed_packages])))
@@ -52,8 +57,11 @@ class TrainingHelper:
             pass
 
         try:
-            git = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], stderr=subprocess.DEVNULL, 
-                                stdout=subprocess.PIPE)
+            git = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+            )
 
             if git.returncode == 0:
                 print(f"Git hash: {git.stdout.decode().strip()}")
@@ -61,18 +69,32 @@ class TrainingHelper:
             pass
 
     def create_parser(self):
-        self.arg_parser = ArgumentParser(get_train_dir=lambda x: os.path.join("save", x.name) if x.name is not None
-                                         else None)
+        self.arg_parser = ArgumentParser(
+            get_train_dir=lambda x: os.path.join("save", x.name)
+            if x.name is not None
+            else None
+        )
         self.arg_parser.add_argument("-name", type=str, help="Train dir name")
-        self.arg_parser.add_argument("-reset", default=False, help="reset training - ignore saves", save=False)
+        self.arg_parser.add_argument(
+            "-reset", default=False, help="reset training - ignore saves", save=False
+        )
         self.arg_parser.add_argument("-log", default="tb")
-        self.arg_parser.add_argument("-save_interval", default="5000", parser=self.arg_parser.int_or_none_parser)
-        self.arg_parser.add_argument("-wandb_save_interval", default="None", parser=self.arg_parser.int_or_none_parser)
-        self.arg_parser.add_argument("-seed", default="none", parser=self.arg_parser.int_or_none_parser)
+        self.arg_parser.add_argument(
+            "-save_interval", default="5000", parser=self.arg_parser.int_or_none_parser
+        )
+        self.arg_parser.add_argument(
+            "-wandb_save_interval", default="None", parser=self.arg_parser.int_or_none_parser
+        )
+        self.arg_parser.add_argument(
+            "-seed", default="none", parser=self.arg_parser.int_or_none_parser
+        )
         self.arg_parser.add_argument("-gpu", default="auto", help="use this gpu")
         self.arg_parser.add_argument("-keep_alive", default=False)
-        self.arg_parser.add_argument("-sweep_id_for_grid_search", default=0,
-                                     help="Doesn't do anything, just to run multiple W&B iterations.")
+        self.arg_parser.add_argument(
+            "-sweep_id_for_grid_search",
+            default=0,
+            help="Doesn't do anything, just to run multiple W&B iterations.",
+        )
         self.arg_parser.add_argument("-restore", default="")
         self.arg_parser.add_argument("-wandb_bug_workaround", default=False)
 
@@ -122,7 +144,9 @@ class TrainingHelper:
             assert self.args.reset is False, "Cannot restore and reset at the same time"
             gpu_backup = self.args.gpu
             self.restore_pending = Saver.do_load(restore or self.args.restore)
-            self.args = self.arg_parser.from_dict(self.restore_pending["run_invariants"]["args"])
+            self.args = self.arg_parser.from_dict(
+                self.restore_pending["run_invariants"]["args"]
+            )
             self.args.gpu = gpu_backup
             self.args.reset = False
 
@@ -130,47 +154,58 @@ class TrainingHelper:
 
         constructor = plot.AsyncLogger if self.log_async else plot.Logger
 
-        assert (not self.use_wandb) or (self.wandb_project_name is not None), \
-            'Must specify wandb project name if logging to wandb.'
+        assert (not self.use_wandb) or (
+            self.wandb_project_name is not None
+        ), "Must specify wandb project name if logging to wandb."
 
         self.state = DotDict()
         self.state.iter = 0
 
-        assert self.args.name is not None or self.use_wandb, "Either name must be specified or W&B should be used"
+        assert (
+            self.args.name is not None or self.use_wandb
+        ), "Either name must be specified or W&B should be used"
 
-        if self.args.restore and self.restore_pending["run_invariants"]["wandb_id"] is not None:
+        if (
+            self.args.restore
+            and self.restore_pending["run_invariants"]["wandb_id"] is not None
+        ):
             wandb_args = {
                 "project": self.wandb_project_name,
                 "id": self.restore_pending["run_invariants"]["wandb_id"]["run_id"],
-                "resume": "must"
+                "resume": "must",
             }
         else:
             wandb_args = {
                 "project": self.wandb_project_name,
-                "config": self.arg_parser.to_dict()
+                "config": self.arg_parser.to_dict(),
             }
 
-        self.summary = constructor(save_dir=os.path.join("save", self.args.name) if self.args.name is not None else None,
-                                        use_tb=self.use_tensorboard,
-                                        use_wandb=self.use_wandb,
-                                        wandb_init_args=wandb_args,
-                                        wandb_extra_config={
-                                            "experiment_name": self.args.name
-                                        },
-                                        get_global_step = lambda: self.state.iter)
+        self.summary = constructor(
+            save_dir=os.path.join("save", self.args.name)
+            if self.args.name is not None
+            else None,
+            use_tb=self.use_tensorboard,
+            use_wandb=self.use_wandb,
+            wandb_init_args=wandb_args,
+            wandb_extra_config={"experiment_name": self.args.name},
+            get_global_step=lambda: self.state.iter,
+        )
 
         if self.use_wandb:
             self.print_env_info()
 
         self.run_invariants = {
             "wandb_id": self.summary.wandb_id,
-            "args": self.arg_parser.to_dict()
+            "args": self.arg_parser.to_dict(),
         }
         self.create_dirs()
         self.save_startup_log()
         self.start_tensorboard()
-        self.saver = Saver(self.dirs.checkpoint, self.args.save_interval,
-                           keep_every_n_hours=None if self.use_wandb else 4)
+        self.saver = Saver(
+            self.dirs.checkpoint,
+            self.args.save_interval,
+            keep_every_n_hours=None if self.use_wandb else 4,
+        )
         self.saver["state"] = self.state
         self.saver["run_invariants"] = deepcopy(self.run_invariants)
         self.setup_environment()
@@ -222,7 +257,11 @@ class TrainingHelper:
 
     def log(self, plotlist, step=None):
         if self.args.wandb_bug_workaround and self.use_wandb:
-            filtered = {k: v for k, v in plotlist.items() if not isinstance(v, framework.visualize.plot.TextTable)}
+            filtered = {
+                k: v
+                for k, v in plotlist.items()
+                if not isinstance(v, framework.visualize.plot.TextTable)
+            }
             if len(filtered) != len(plotlist) and not self.wandb_bug_found:
                 print("WARNING: wandb_bug_workaround enabled. Refusing to log tables")
                 self.wandb_bug_found = True

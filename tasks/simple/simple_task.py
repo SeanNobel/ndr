@@ -1,13 +1,13 @@
 import torch
 import torch.nn
 import torch.optim
-import framework
+import ndr.framework as framework
 import torch.utils.data
 import torch.cuda.amp
 from typing import Optional, Dict, Any, Tuple, List
-from interfaces import Result
+from ndr.interfaces import Result
 from ..task import Task
-from layers import LayerRegularizer
+from ndr.layers import LayerRegularizer
 import time
 
 
@@ -57,7 +57,9 @@ class SimpleTask(Task):
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.amp_enabled)
         self.helper.saver["scaler"] = self.scaler
 
-        print(f"Total number of model parameters: {sum(p.numel() for p in self.model.parameters())}")
+        print(
+            f"Total number of model parameters: {sum(p.numel() for p in self.model.parameters())}"
+        )
 
         self.helper.saver["model"] = self.model
         self.create_state()
@@ -72,25 +74,41 @@ class SimpleTask(Task):
 
         return data, d_chunks
 
-    def create_train_loader(self, loader: torch.utils.data.Dataset, seed: Optional[int] = None) -> \
-            torch.utils.data.DataLoader:
-
+    def create_train_loader(
+        self, loader: torch.utils.data.Dataset, seed: Optional[int] = None
+    ) -> torch.utils.data.DataLoader:
         return super().create_train_loader_bs(loader, self.helper.args.batch_size, seed)
 
     def create_loaders(self):
         self.train_loader = self.create_train_loader(self.train_set)
         self.valid_loaders = framework.data_structures.DotDict()
-        self.valid_loaders.update({k: self.create_valid_loader(v) for k, v in self.valid_sets.items()})
+        self.valid_loaders.update(
+            {k: self.create_valid_loader(v) for k, v in self.valid_sets.items()}
+        )
 
     def create_optimizer(self):
         if self.helper.args.optimizer in ["adam", "adamw"]:
-            opt = torch.optim.Adam if self.helper.args.optimizer == "adam" else torch.optim.AdamW
-            self.set_optimizer(opt(self.model.parameters(), self.helper.args.lr,
-                                                weight_decay=self.helper.args.wd, betas=self.helper.args.adam.betas,
-                                                eps=self.helper.args.adam.eps))
+            opt = (
+                torch.optim.Adam if self.helper.args.optimizer == "adam" else torch.optim.AdamW
+            )
+            self.set_optimizer(
+                opt(
+                    self.model.parameters(),
+                    self.helper.args.lr,
+                    weight_decay=self.helper.args.wd,
+                    betas=self.helper.args.adam.betas,
+                    eps=self.helper.args.adam.eps,
+                )
+            )
         elif self.helper.args.optimizer == "sgd":
-            self.set_optimizer(torch.optim.SGD(self.model.parameters(), self.helper.args.lr,
-                                               weight_decay=self.helper.args.wd, momentum=0.9))
+            self.set_optimizer(
+                torch.optim.SGD(
+                    self.model.parameters(),
+                    self.helper.args.lr,
+                    weight_decay=self.helper.args.wd,
+                    momentum=0.9,
+                )
+            )
         else:
             assert False, f"Unsupported optimizer: {self.helper.args.optimizer}"
 
@@ -110,7 +128,9 @@ class SimpleTask(Task):
             assert torch.is_tensor(v), "Only tensors are supported by autosplitting"
 
             bd = self.batch_dim if self.batch_dim < v.ndimension() else 0
-            assert v.shape[bd] % n == 0, f"Batch (dim {bd} of input {k} of shape {v.shape} is not divisible by {n})"
+            assert (
+                v.shape[bd] % n == 0
+            ), f"Batch (dim {bd} of input {k} of shape {v.shape} is not divisible by {n})"
 
             for i, c in enumerate(v.chunk(n, dim=bd)):
                 res[i][k] = c
@@ -122,13 +142,18 @@ class SimpleTask(Task):
 
     def get_seq_length(self, data: Dict[str, Any]) -> int:
         # This assumes separate encoder and decoder
-        return max(data["in"].shape[self.time_dim], data["out"].shape[self.time_dim] if data["out"].ndim > 1 else 0)
+        return max(
+            data["in"].shape[self.time_dim],
+            data["out"].shape[self.time_dim] if data["out"].ndim > 1 else 0,
+        )
 
     def get_n_chunks(self, data: Dict[str, Any]) -> int:
-        max_length_per_batch = self.helper.args.max_length_per_batch or self.MAX_LENGHT_PER_BATCH
+        max_length_per_batch = (
+            self.helper.args.max_length_per_batch or self.MAX_LENGHT_PER_BATCH
+        )
         if self.is_seq2seq_task(data) and max_length_per_batch:
             # The formula below assumes quadratic memory consumption
-            return int(2**int(self.get_seq_length(data) / max_length_per_batch))
+            return int(2 ** int(self.get_seq_length(data) / max_length_per_batch))
         return 1
 
     def post_backward(self) -> Dict[str, Any]:
@@ -159,7 +184,7 @@ class SimpleTask(Task):
                     res, custom_plots = self.run_model(d)
                     res_list.append(res)
                     plots.update(custom_plots)
-                weights.append((d["out_len"].sum()/total_out_len) if "out_len" in d else 1)
+                weights.append((d["out_len"].sum() / total_out_len) if "out_len" in d else 1)
                 total_loss = res_list[-1].loss + self.regularizer.get()
                 assert torch.isfinite(total_loss)
                 self.scaler.scale(total_loss * weights[-1]).backward()
@@ -167,7 +192,9 @@ class SimpleTask(Task):
 
             self.scaler.unscale_(self.optimizer)
             if self.helper.args.grad_clip:
-                gn = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.helper.args.grad_clip)
+                gn = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), self.helper.args.grad_clip
+                )
                 self.max_grad = max(self.max_grad, gn)
             self.scaler.step(self.optimizer)
             self.scaler.update()

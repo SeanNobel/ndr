@@ -1,11 +1,11 @@
-from framework.data_structures.vocabulary import WordVocabulary
+from ndr.framework.data_structures.vocabulary import WordVocabulary
 from genericpath import exists
 import numpy as np
 from numpy.random import randint, sample
 from typing import Callable, Tuple, Union, List, Optional, Dict, Any
 import dataclasses
 import os
-import framework
+import ndr.framework as framework
 import torch
 import torch.utils.data
 from tqdm import tqdm
@@ -32,34 +32,52 @@ class Sample:
         return self.__class__(**d)
 
 
-def get_selector_op(selector: Callable[[List[Sample]], int]) -> Callable[[List[Sample]], Sample]:
+def get_selector_op(
+    selector: Callable[[List[Sample]], int]
+) -> Callable[[List[Sample]], Sample]:
     def op(x):
         y = selector(x)
-        return x[y].dup(max_dependency_depth=x[y].max_dependency_depth + 1, depth=max(a.depth for a in x) + 1)
+        return x[y].dup(
+            max_dependency_depth=x[y].max_dependency_depth + 1,
+            depth=max(a.depth for a in x) + 1,
+        )
+
     return op
 
 
 def sum_op(x: List[Sample]) -> Sample:
-    return Sample("", sum(a.output for a in x) % 10, max(a.depth for a in x) + 1, -1,
-                  max(a.max_dependency_depth for a in x) + 1)
+    return Sample(
+        "",
+        sum(a.output for a in x) % 10,
+        max(a.depth for a in x) + 1,
+        -1,
+        max(a.max_dependency_depth for a in x) + 1,
+    )
 
 
 def median_op(x: List[Sample]) -> Sample:
     # Median op compatible with original listops
     indices = np.argsort([a.output for a in x])
-    selected = [indices[len(x) // 2]] if len(x) % 2 == 1 else [indices[len(x) // 2 - 1], indices[len(x) // 2]]
+    selected = (
+        [indices[len(x) // 2]]
+        if len(x) % 2 == 1
+        else [indices[len(x) // 2 - 1], indices[len(x) // 2]]
+    )
     res = int(sum(x[i].output for i in selected) / len(selected))
 
-    return Sample("", res, max(a.depth for a in x) + 1, -1, max(x[i].max_dependency_depth for i in selected) + 1)
+    return Sample(
+        "",
+        res,
+        max(a.depth for a in x) + 1,
+        -1,
+        max(x[i].max_dependency_depth for i in selected) + 1,
+    )
 
 
 class ListopsTestState(TextClassifierTestState):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.hists = {
-            "ok_dependency_depts": [],
-            "not_ok_dependency_depts": []
-        }
+        self.hists = {"ok_dependency_depts": [], "not_ok_dependency_depts": []}
 
         self.counts_per_depth = {}
 
@@ -69,8 +87,12 @@ class ListopsTestState(TextClassifierTestState):
         out = self.convert_to_index(net_out)
         ok_mask = out == data["out"]
 
-        self.hists["ok_dependency_depts"] += data["max_dependency_depth"][ok_mask].cpu().numpy().tolist()
-        self.hists["not_ok_dependency_depts"] += data["max_dependency_depth"][~ok_mask].cpu().numpy().tolist()
+        self.hists["ok_dependency_depts"] += (
+            data["max_dependency_depth"][ok_mask].cpu().numpy().tolist()
+        )
+        self.hists["not_ok_dependency_depts"] += (
+            data["max_dependency_depth"][~ok_mask].cpu().numpy().tolist()
+        )
 
         depths = torch.unique(data["max_dependency_depth"]).int().cpu().numpy().tolist()
         for d in depths:
@@ -81,11 +103,12 @@ class ListopsTestState(TextClassifierTestState):
             self.counts_per_depth[d]["total"] += m.long().sum().item()
             self.counts_per_depth[d]["ok"] += ok_mask[m].long().sum().item()
 
-
     def plot(self) -> Dict[str, Any]:
         res = super().plot()
         for name, h in self.hists.items():
-            res[f"hist/{name}"] = framework.visualize.plot.Histogram(np.asarray(h, dtype=np.int32))
+            res[f"hist/{name}"] = framework.visualize.plot.Histogram(
+                np.asarray(h, dtype=np.int32)
+            )
 
         for k, v in self.counts_per_depth.items():
             res[f"dep_length/{k}/accuracy"] = v["ok"] / v["total"]
@@ -103,7 +126,7 @@ class ListOps(torch.utils.data.Dataset):
         ("MAX", get_selector_op(lambda x: max(range(len(x)), key=lambda i: x[i].output))),
         ("MED", median_op),
         # ("MED", get_selector_op(lambda x: np.argsort([a.output for a in x])[len(x) // 2])),
-        ("SM", sum_op)
+        ("SM", sum_op),
     ]
 
     def get_one(self, seed) -> Sample:
@@ -115,7 +138,7 @@ class ListOps(torch.utils.data.Dataset):
             return res
 
         def gen_args(max_args: int, max_depth: int) -> List[Sample]:
-            n_args = seed.randint(2, max_args + 1) if (max_args+1) != 2 else 2
+            n_args = seed.randint(2, max_args + 1) if (max_args + 1) != 2 else 2
             return [get_subtree(max_depth) for _ in range(n_args)]
 
         def get_subtree(max_depth: int) -> Sample:
@@ -131,7 +154,7 @@ class ListOps(torch.utils.data.Dataset):
         while res.depth < self.depth[0]:
             args = gen_args(self.max_args - 1, self.depth[1] - 1)
             # Insert the old subtree: guaranteed to grow by 1
-            args.insert(seed.randint(len(args)), res)   
+            args.insert(seed.randint(len(args)), res)
             res = sample_subop(args)
 
         return res
@@ -139,11 +162,19 @@ class ListOps(torch.utils.data.Dataset):
     def config_id(self) -> str:
         res = f"{self.length}_{self.depth}_{self.p_op}_{self.max_args}_{self.set}_{self.eq_depth}_{self.n_samples}"
         if self.custom_vocab:
-            res = res + "_voc" + hashlib.md5((str(self.in_vocabulary) + str(self.out_vocabulary)).encode()).hexdigest()
+            res = (
+                res
+                + "_voc"
+                + hashlib.md5(
+                    (str(self.in_vocabulary) + str(self.out_vocabulary)).encode()
+                ).hexdigest()
+            )
         return res
 
     def translate_sample(self, s: Sample) -> Sample:
-        return s.dup(input=self.in_vocabulary(s.input), output=self.out_vocabulary([str(s.output)])[0])
+        return s.dup(
+            input=self.in_vocabulary(s.input), output=self.out_vocabulary([str(s.output)])[0]
+        )
 
     def load_cache(self):
         fname = f"{self.cache_dir}/{self.__class__.__name__}/{self.config_id()}.pth"
@@ -155,7 +186,7 @@ class ListOps(torch.utils.data.Dataset):
 
         print("Generating dataset...")
         os.makedirs(os.path.dirname(fname), exist_ok=True)
-        seed = np.random.RandomState(0x12345678+hash(self.set) & 0x1FFFFFFF)
+        seed = np.random.RandomState(0x12345678 + hash(self.set) & 0x1FFFFFFF)
         self.data = []
 
         def get_samples(seed):
@@ -169,7 +200,7 @@ class ListOps(torch.utils.data.Dataset):
             return res
 
         nproc = multiprocessing.cpu_count()
-        pbar = tqdm(total = self.n_samples)
+        pbar = tqdm(total=self.n_samples)
 
         lim = math.ceil(self.n_samples / (self.depth[1] - self.depth[0] + 1))
         depth_bins = {r: 0 for r in range(self.depth[0], self.depth[1] + 1)}
@@ -197,7 +228,9 @@ class ListOps(torch.utils.data.Dataset):
 
                     # Rejection sample based on length
                     if self.eq_depth:
-                        if (s.max_dependency_depth not in depth_bins) or depth_bins[s.max_dependency_depth] >= lim:
+                        if (s.max_dependency_depth not in depth_bins) or depth_bins[
+                            s.max_dependency_depth
+                        ] >= lim:
                             continue
                         depth_bins[s.max_dependency_depth] += 1
 
@@ -213,8 +246,9 @@ class ListOps(torch.utils.data.Dataset):
     def construct_vocab(self):
         if self.in_vocabulary is None:
             digits = [str(i) for i in range(10)]
-            ListOps.in_vocabulary = framework.data_structures.WordVocabulary(["]"] + ["["+o[0] for o in self.OPS] + digits, 
-                                                                             split_punctuation=False)
+            ListOps.in_vocabulary = framework.data_structures.WordVocabulary(
+                ["]"] + ["[" + o[0] for o in self.OPS] + digits, split_punctuation=False
+            )
             ListOps.out_vocabulary = framework.data_structures.WordVocabulary(digits)
 
     def print_hist(self):
@@ -227,14 +261,30 @@ class ListOps(torch.utils.data.Dataset):
         cs = np.cumsum([h[k] for k in ks])
         print("Listops dependency")
         print("    depth histogram: ", ", ".join([f"{k}: {h[k]}" for k in ks]))
-        print("    depth cumulative histogram: ", ", ".join([f"{k}: {cs[i]/cs[-1]*100:.1f}%" for i, k in enumerate(ks)]))
+        print(
+            "    depth cumulative histogram: ",
+            ", ".join([f"{k}: {cs[i]/cs[-1]*100:.1f}%" for i, k in enumerate(ks)]),
+        )
 
         o_ks = list(sorted(res_h.keys()))
-        print("    out histogram: ", ", ".join([f"{k}: {res_h[k]/len(self)*100:.1f}%" for k in o_ks]))
+        print(
+            "    out histogram: ",
+            ", ".join([f"{k}: {res_h[k]/len(self)*100:.1f}%" for k in o_ks]),
+        )
 
-    def __init__(self, set: str, length: RangeOrInt, depth: RangeOrInt = 20, p_op: float = 0.25, max_args: int = 5,
-                 n_samples: int = 10000, cache_dir: str = "./cache", equivalize_depdendency_depth: bool = False,
-                 in_vocab: Optional[WordVocabulary] = None, out_vocab: Optional[WordVocabulary] = None) -> None:
+    def __init__(
+        self,
+        set: str,
+        length: RangeOrInt,
+        depth: RangeOrInt = 20,
+        p_op: float = 0.25,
+        max_args: int = 5,
+        n_samples: int = 10000,
+        cache_dir: str = "./cache",
+        equivalize_depdendency_depth: bool = False,
+        in_vocab: Optional[WordVocabulary] = None,
+        out_vocab: Optional[WordVocabulary] = None,
+    ) -> None:
         self.length = (0, length) if isinstance(length, int) else length
         self.depth = (2, depth) if isinstance(depth, int) else depth
         self.p_op = p_op
@@ -262,12 +312,15 @@ class ListOps(torch.utils.data.Dataset):
             "out": self.data[item].output,
             "in_len": len(self.data[item].input),
             "out_len": 1,
-            "max_dependency_depth": self.data[item].max_dependency_depth
+            "max_dependency_depth": self.data[item].max_dependency_depth,
         }
 
     def __len__(self) -> int:
         return len(self.data)
 
     def start_test(self) -> TextClassifierTestState:
-        return ListopsTestState(lambda x: " ".join(self.in_vocabulary(x)),
-                                lambda x: self.out_vocabulary([x])[0], max_bad_samples=1000)
+        return ListopsTestState(
+            lambda x: " ".join(self.in_vocabulary(x)),
+            lambda x: self.out_vocabulary([x])[0],
+            max_bad_samples=1000,
+        )

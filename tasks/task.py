@@ -1,4 +1,4 @@
-import framework
+import ndr.framework as framework
 from interfaces import Result, ModelInterface
 import torch
 import torch.utils.data
@@ -7,6 +7,7 @@ from typing import Dict, Any, Iterable, Tuple, Optional
 import os
 import optimizer
 from dataclasses import dataclass
+
 
 @dataclass
 class LastBestMarker:
@@ -33,67 +34,89 @@ class Task:
         self.plot_time_meter = framework.utils.ElapsedTimeMeter()
 
         if self.helper.args.lr_sched.type == "step":
-            self.lr_scheduler = optimizer.StepLrSched(self.helper.args.lr, self.helper.args.lr_sched.steps,
-                                                      self.helper.args.lr_sched.gamma)
+            self.lr_scheduler = optimizer.StepLrSched(
+                self.helper.args.lr,
+                self.helper.args.lr_sched.steps,
+                self.helper.args.lr_sched.gamma,
+            )
 
         elif self.helper.args.lr_sched.type == "noam":
-            self.lr_scheduler = optimizer.NoamLRSched(self.helper.args.lr, self.helper.args.state_size,
-                                                      self.helper.args.lr_warmup)
+            self.lr_scheduler = optimizer.NoamLRSched(
+                self.helper.args.lr, self.helper.args.state_size, self.helper.args.lr_warmup
+            )
         else:
             assert False
 
-    def create_valid_loader(self, vset: torch.utils.data.Dataset) -> torch.utils.data.DataLoader:
+    def create_valid_loader(
+        self, vset: torch.utils.data.Dataset
+    ) -> torch.utils.data.DataLoader:
         batch_size = self.test_batch_size
 
         # Do bucketed testing even when the bucketed training is not enabled
         if "in_len" in vset[0]:
-            batch_sampler = framework.loader.sampler.BucketedSampler(vset, batch_size, infinite=False, long_first=True,
-                                                                     random_order=False)
+            batch_sampler = framework.loader.sampler.BucketedSampler(
+                vset, batch_size, infinite=False, long_first=True, random_order=False
+            )
             batch_size = 1
         else:
             batch_sampler = None
 
-        return torch.utils.data.DataLoader(vset, batch_size=batch_size, batch_sampler=batch_sampler,
-                                   collate_fn=framework.loader.collate.VarLengthCollate(batch_dim=self.batch_dim),
-                                   num_workers=self.VALID_NUM_WORKERS, persistent_workers=self.VALID_NUM_WORKERS > 0)
-
+        return torch.utils.data.DataLoader(
+            vset,
+            batch_size=batch_size,
+            batch_sampler=batch_sampler,
+            collate_fn=framework.loader.collate.VarLengthCollate(batch_dim=self.batch_dim),
+            num_workers=self.VALID_NUM_WORKERS,
+            persistent_workers=self.VALID_NUM_WORKERS > 0,
+        )
 
     def create_loaders(self):
-        self.train_loader = self.create_train_loader(self.train_set, mask = False)
+        self.train_loader = self.create_train_loader(self.train_set, mask=False)
         self.valid_loaders = framework.data_structures.DotDict()
-        self.valid_loaders.update({k: self.create_valid_loader(v) for k, v in self.valid_sets.items()})
+        self.valid_loaders.update(
+            {k: self.create_valid_loader(v) for k, v in self.valid_sets.items()}
+        )
 
     def replace_valid_set(self, name: str, vset: torch.utils.data.Dataset):
         self.valid_sets[name] = vset
         self.valid_loaders[name] = self.create_valid_loader(vset)
 
-    def create_train_loader_bs(self, loader: torch.utils.data.Dataset, batch_size: int, seed: Optional[int] = None) \
-                            -> torch.utils.data.DataLoader:
-
+    def create_train_loader_bs(
+        self, loader: torch.utils.data.Dataset, batch_size: int, seed: Optional[int] = None
+    ) -> torch.utils.data.DataLoader:
         if self.helper.args.length_bucketed_sampling and "in_len" in loader[0]:
-            batch_sampler = framework.loader.sampler.BucketedSampler(loader, batch_size, infinite=True, drop_last=True,
-                                                                     random_order=True)
+            batch_sampler = framework.loader.sampler.BucketedSampler(
+                loader, batch_size, infinite=True, drop_last=True, random_order=True
+            )
             sampler = None
             batch_size = 1
         else:
             batch_sampler = None
-            sampler = framework.loader.sampler.InfiniteSampler(loader, seed = seed)
+            sampler = framework.loader.sampler.InfiniteSampler(loader, seed=seed)
 
-
-        return torch.utils.data.DataLoader(loader, batch_size=batch_size,
-                                           sampler=sampler, batch_sampler=batch_sampler,
-                                           collate_fn=framework.loader.collate.VarLengthCollate(
-                                               batch_dim=self.batch_dim),
-                                           num_workers=self.TRAIN_NUM_WORKERS, pin_memory=True,
-                                           persistent_workers=self.TRAIN_NUM_WORKERS > 0)
+        return torch.utils.data.DataLoader(
+            loader,
+            batch_size=batch_size,
+            sampler=sampler,
+            batch_sampler=batch_sampler,
+            collate_fn=framework.loader.collate.VarLengthCollate(batch_dim=self.batch_dim),
+            num_workers=self.TRAIN_NUM_WORKERS,
+            pin_memory=True,
+            persistent_workers=self.TRAIN_NUM_WORKERS > 0,
+        )
 
     def create_validate_on_train(self, set: torch.utils.data.Dataset):
         self.valid_sets.train = set
-        self.valid_loaders.train = torch.utils.data.DataLoader(set, batch_size=self.helper.args.batch_size,
-                                   collate_fn=framework.loader.collate.VarLengthCollate(batch_dim=self.batch_dim),
-                                   sampler=framework.loader.sampler.SubsetSampler(set, len(self.valid_sets.iid)
-                                                                          if "iid" in self.valid_sets else 1000),
-                                   num_workers=self.VALID_NUM_WORKERS, persistent_workers=self.VALID_NUM_WORKERS > 0)
+        self.valid_loaders.train = torch.utils.data.DataLoader(
+            set,
+            batch_size=self.helper.args.batch_size,
+            collate_fn=framework.loader.collate.VarLengthCollate(batch_dim=self.batch_dim),
+            sampler=framework.loader.sampler.SubsetSampler(
+                set, len(self.valid_sets.iid) if "iid" in self.valid_sets else 1000
+            ),
+            num_workers=self.VALID_NUM_WORKERS,
+            persistent_workers=self.VALID_NUM_WORKERS > 0,
+        )
 
     def clip_gradients(self):
         if self.helper.args.grad_clip:
@@ -108,15 +131,18 @@ class Task:
         if curr_step >= n_steps:
             lr = final
         else:
-            lr = final / n_steps * (curr_step+1)
+            lr = final / n_steps * (curr_step + 1)
 
         self.set_optimizer_lr(lr)
         return lr
 
     def set_lr(self):
         if self.helper.args.lr_sched.type == "step":
-            self.set_linear_warmup(self.helper.state.iter, self.helper.args.lr_warmup,
-                                   self.lr_scheduler.get(self.helper.state.iter))
+            self.set_linear_warmup(
+                self.helper.state.iter,
+                self.helper.args.lr_warmup,
+                self.lr_scheduler.get(self.helper.state.iter),
+            )
         elif self.helper.args.lr_sched.type == "noam":
             self.set_optimizer_lr(self.lr_scheduler.get(self.helper.state.iter))
         else:
@@ -129,7 +155,9 @@ class Task:
         res = self.model_interface(data)
         return res, {}
 
-    def validate_on(self, set: torch.utils.data.Dataset, loader: torch.utils.data.DataLoader) -> Tuple[Any, float]:
+    def validate_on(
+        self, set: torch.utils.data.Dataset, loader: torch.utils.data.DataLoader
+    ) -> Tuple[Any, float]:
         self.model.eval()
 
         with torch.no_grad():
@@ -151,16 +179,27 @@ class Task:
         return self.validate_on(self.valid_sets[name], self.valid_loaders[name])
 
     def update_best_accuracies(self, name: str, accuracy: float, loss: float):
-        if name not in self.helper.state.best_losses or loss < self.helper.state.best_losses[name].loss:
-                self.helper.state.best_losses[name] = LastBestMarker(self.helper.state.iter, loss, accuracy)
+        if (
+            name not in self.helper.state.best_losses
+            or loss < self.helper.state.best_losses[name].loss
+        ):
+            self.helper.state.best_losses[name] = LastBestMarker(
+                self.helper.state.iter, loss, accuracy
+            )
 
-        if name not in self.helper.state.best_accuracies or accuracy > \
-                self.helper.state.best_accuracies[name].accuracy:
-            self.helper.state.best_accuracies[name] = LastBestMarker(self.helper.state.iter, loss, accuracy)
+        if (
+            name not in self.helper.state.best_accuracies
+            or accuracy > self.helper.state.best_accuracies[name].accuracy
+        ):
+            self.helper.state.best_accuracies[name] = LastBestMarker(
+                self.helper.state.iter, loss, accuracy
+            )
 
         return {
-            f"{name}/time_since_best_loss": self.helper.state.iter - self.helper.state.best_losses[name].iter,
-            f"{name}/time_since_best_accuracy": self.helper.state.iter - self.helper.state.best_accuracies[name].iter
+            f"{name}/time_since_best_loss": self.helper.state.iter
+            - self.helper.state.best_losses[name].iter,
+            f"{name}/time_since_best_accuracy": self.helper.state.iter
+            - self.helper.state.best_accuracies[name].iter,
         }
 
     def validate_on_names(self, name_it: Iterable[str]) -> Dict[str, Any]:
@@ -176,7 +215,7 @@ class Task:
             sum_all_losses += loss
             charts.update({f"{name}/{k}": v for k, v in test.plot().items()})
             sum_accuracy += test.accuracy
-            
+
             charts.update(self.update_best_accuracies(name, test.accuracy, loss))
 
         charts["mean_accuracy"] = sum_accuracy / len(self.valid_sets)
@@ -196,9 +235,9 @@ class Task:
 
         if self.helper.state.iter % 20 == 0:
             plots["train/loss"] = self.loss_average.get()
-            plots["timing/ms_per_iter"] = self.forward_time_meter.get(True)*1000/20
-            plots["timing/ms_per_load"] = self.load_time_meter.get(True)*1000/20
-            plots["timing/ms_per_plot"] = self.plot_time_meter.get(True)*1000/20
+            plots["timing/ms_per_iter"] = self.forward_time_meter.get(True) * 1000 / 20
+            plots["timing/ms_per_load"] = self.load_time_meter.get(True) * 1000 / 20
+            plots["timing/ms_per_plot"] = self.plot_time_meter.get(True) * 1000 / 20
 
         if self.helper.state.iter % self.helper.args.test_interval == 0:
             plots.update({f"validation/{k}": v for k, v in self.validate().items()})

@@ -1,9 +1,9 @@
 import torch
 import torch.nn
 from typing import Dict, Tuple
-from models.encoder_decoder import add_eos
+from ndr.models.encoder_decoder import add_eos
 from ..model_interface import ModelInterface
-import framework
+import ndr.framework as framework
 
 from ..result import FeedforwardResult
 
@@ -18,5 +18,7 @@ class TransformerClassifierInterface(ModelInterface):
 
     def __call__(self, data: Dict[str, torch.Tensor]) -> FeedforwardResult:
         res = self.model(data["in"].transpose(0, 1), data["in_len"].long())
-        loss = framework.layers.cross_entropy(res, data["out"], reduction='mean', smoothing=self.label_smoothing)
+        loss = framework.layers.cross_entropy(
+            res, data["out"], reduction="mean", smoothing=self.label_smoothing
+        )
         return FeedforwardResult(res, loss)

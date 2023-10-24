@@ -1,7 +1,7 @@
 import os
 
-from framework.utils import download
-import framework
+from ndr.framework.utils import download
+import ndr.framework as framework
 from .text_dataset import TextDataset, TextDatasetCache
 import re
 from ..sequence import TextClassifierTestState
@@ -41,7 +41,9 @@ class ListopsOfficial(TextDataset):
                     out_sentences.append(outp.strip())
                     this_set.append(len(in_sentences) - 1)
 
-        return TextDatasetCache().build(index_table, in_sentences, out_sentences, split_punctuation=False)
+        return TextDatasetCache().build(
+            index_table, in_sentences, out_sentences, split_punctuation=False
+        )
 
     def __getitem__(self, item: int) -> Dict[str, Any]:
         res = super().__getitem__(item)
@@ -49,8 +51,11 @@ class ListopsOfficial(TextDataset):
         return res
 
     def start_test(self) -> TextClassifierTestState:
-        return TextClassifierTestState(lambda x: " ".join(self.in_vocabulary(x)),
-                                       lambda x: self.out_vocabulary([x])[0], max_bad_samples=1000)
+        return TextClassifierTestState(
+            lambda x: " ".join(self.in_vocabulary(x)),
+            lambda x: self.out_vocabulary([x])[0],
+            max_bad_samples=1000,
+        )
 
 
 class ListopsOfficialGenerate(TextDataset):
@@ -66,7 +71,9 @@ class ListopsOfficialGenerate(TextDataset):
         index_table["simple"]["train"] = this_set
 
         print(f"Generating ListOps with {self.N} elements")
-        samples = rejection_sample(self.N, np.random.RandomState(), lambda x: generate_tree(1), lambda x: True, hash)
+        samples = rejection_sample(
+            self.N, np.random.RandomState(), lambda x: generate_tree(1), lambda x: True, hash
+        )
 
         print("Postprocessing...")
 
@@ -83,17 +90,27 @@ class ListopsOfficialGenerate(TextDataset):
             out_sentences.append(o)
             this_set.append(len(in_sentences) - 1)
 
-        return TextDatasetCache().build(index_table, in_sentences, out_sentences, split_punctuation=False)
+        return TextDatasetCache().build(
+            index_table, in_sentences, out_sentences, split_punctuation=False
+        )
 
     def __getitem__(self, item: int) -> Dict[str, Any]:
         res = super().__getitem__(item)
         res["out"] = res["out"][0]
         return res
 
-    def __init__(self, N: int, shared_vocabulary: bool = False, cache_dir: str="./cache/"):
+    def __init__(self, N: int, shared_vocabulary: bool = False, cache_dir: str = "./cache/"):
         self.N = N
-        super().__init__(sets=["train"], split_type=["simple"], cache_dir=cache_dir, shared_vocabulary=shared_vocabulary)
+        super().__init__(
+            sets=["train"],
+            split_type=["simple"],
+            cache_dir=cache_dir,
+            shared_vocabulary=shared_vocabulary,
+        )
 
     def start_test(self) -> TextClassifierTestState:
-        return TextClassifierTestState(lambda x: " ".join(self.in_vocabulary(x)),
-                                       lambda x: self.out_vocabulary([x])[0], max_bad_samples=1000)
+        return TextClassifierTestState(
+            lambda x: " ".join(self.in_vocabulary(x)),
+            lambda x: self.out_vocabulary([x])[0],
+            max_bad_samples=1000,
+        )
