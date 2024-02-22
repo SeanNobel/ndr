@@ -3,7 +3,7 @@ import re
 import os
 import importlib
 import inspect
-import framework
+import ndr.framework as framework
 
 TASKS = {}
 ARGS_REGISTERS = []
@@ -32,7 +32,7 @@ def register_files(prefix=""):
     caller_package = inspect.getmodule(inspect.stack()[1][0]).__name__
 
     for module in os.listdir(caller_dir):
-        if module == '__init__.py' or module[-3:] != '.py':
+        if module == "__init__.py" or module[-3:] != ".py":
             continue
         importlib.import_module("." + module[:-3], package=caller_package)
 
@@ -40,8 +40,8 @@ def register_files(prefix=""):
 
 
 def camel_to_snake(name: str) -> str:
-    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
 
 
 def task(name: Optional[str] = None):
@@ -50,6 +50,7 @@ def task(name: Optional[str] = None):
         assert n not in TASKS, f"Task {n} already exists"
         TASKS[n] = cls
         return cls
+
     return wrapper
 
 

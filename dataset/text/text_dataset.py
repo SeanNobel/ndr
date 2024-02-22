@@ -4,8 +4,8 @@ import torch
 import torch.utils.data
 import os
 import numpy as np
-import framework
-from framework.data_structures import WordVocabulary
+import ndr.framework as framework
+from ndr.framework.data_structures import WordVocabulary
 from typing import List, Dict, Any, Tuple
 from ..sequence import TextSequenceTestState
 
@@ -27,20 +27,29 @@ class TextDatasetCache:
     max_in_len: int
     max_out_len: int
 
-    def build(self, index_table: IndexTable, in_sentences: List[str], out_sentences: List[str],
-              split_punctuation: bool = True):
+    def build(
+        self,
+        index_table: IndexTable,
+        in_sentences: List[str],
+        out_sentences: List[str],
+        split_punctuation: bool = True,
+    ):
         self.version = VERSION
         self.index_table = index_table
 
         print("Constructing vocabularies")
         self.in_vocabulary = WordVocabulary(in_sentences, split_punctuation=split_punctuation)
-        self.out_vocabulary = WordVocabulary(out_sentences, split_punctuation=split_punctuation)
+        self.out_vocabulary = WordVocabulary(
+            out_sentences, split_punctuation=split_punctuation
+        )
 
         self.in_sentences = [self.in_vocabulary(s) for s in in_sentences]
         self.out_sentences = [self.out_vocabulary(s) for s in out_sentences]
 
         print("Calculating length statistics")
-        counts, bins = np.histogram([len(i)+len(o) for i, o in zip(self.in_sentences, self.out_sentences)])
+        counts, bins = np.histogram(
+            [len(i) + len(o) for i, o in zip(self.in_sentences, self.out_sentences)]
+        )
         self.sum_len_histogram = {k: v for k, v in zip(bins.tolist(), counts.tolist())}
 
         counts, bins = np.histogram([len(i) for i in self.in_sentences])
@@ -67,7 +76,7 @@ class TextDatasetCache:
             "max_out_len": self.max_out_len,
             "in_len_histogram": self.in_len_histogram,
             "sum_len_histogram": self.sum_len_histogram,
-            "out_len_histogram": self.out_len_histogram
+            "out_len_histogram": self.out_len_histogram,
         }
 
     def load_state_dict(self, data: Dict[str, Any]):
@@ -120,13 +129,15 @@ class TextDataset(torch.utils.data.Dataset):
     def _load_dataset(self):
         os.makedirs(self.cache_dir, exist_ok=True)
         cache_file = os.path.join(self.cache_dir, self.get_cache_fname())
-        
+
         if os.path.isfile(cache_file):
             res = self.load_cache_file(cache_file)
             if res.version == VERSION:
                 return res
             else:
-                print(f"{self.__class__.__name__}: Invalid cache version: {res.version}, current: {VERSION}")
+                print(
+                    f"{self.__class__.__name__}: Invalid cache version: {res.version}, current: {VERSION}"
+                )
 
         with framework.utils.LockFile(os.path.join(self.cache_dir, "lock")):
             res = self.build_cache()
@@ -137,14 +148,21 @@ class TextDataset(torch.utils.data.Dataset):
         keys = list(sorted(histogram.keys()))
         values = [histogram[k] for k in keys]
         percent = (np.cumsum(values) * (100.0 / sum(histogram.values()))).tolist()
-        return ", ".join(f"{k:.1f}: {v} (>= {p:.1f}%)" for k, v, p in zip(keys, values, percent))
-     
-    def __init__(self, sets: List[str] = ["train"], split_type: List[str] = ["simple"], cache_dir: str="./cache/",
-                 shared_vocabulary: bool = False):
+        return ", ".join(
+            f"{k:.1f}: {v} (>= {p:.1f}%)" for k, v, p in zip(keys, values, percent)
+        )
+
+    def __init__(
+        self,
+        sets: List[str] = ["train"],
+        split_type: List[str] = ["simple"],
+        cache_dir: str = "./cache/",
+        shared_vocabulary: bool = False,
+    ):
         super().__init__()
 
         self.cache_dir = os.path.join(cache_dir, self.__class__.__name__)
-        os.makedirs(self.cache_dir, exist_ok = True)
+        os.makedirs(self.cache_dir, exist_ok=True)
 
         assert isinstance(sets, List)
         assert isinstance(split_type, List)
@@ -166,16 +184,27 @@ class TextDataset(torch.utils.data.Dataset):
 
         if just_loaded:
             for k, t in self._cache.index_table.items():
-                print(f"{self.__class__.__name__}: split {k} data:", 
-                      ", ".join([f"{k}: {len(v)}" for k, v in t.items()]))
-            print(f"{self.__class__.__name__}: vocabulary sizes: in: {len(self._cache.in_vocabulary)}, "
-                  f"out: {len(self._cache.out_vocabulary)}")
-            print(f"{self.__class__.__name__}: max input length: {self._cache.max_in_len}, "
-                  f"max output length: {self._cache.max_out_len}")
-            print(f"{self.__class__.__name__} sum length histogram: {self.hist_to_text(self._cache.sum_len_histogram)}")
-            print(f"{self.__class__.__name__} in length histogram: {self.hist_to_text(self._cache.in_len_histogram)}")
-            print(f"{self.__class__.__name__} out length histogram: {self.hist_to_text(self._cache.out_len_histogram)}")
-            
+                print(
+                    f"{self.__class__.__name__}: split {k} data:",
+                    ", ".join([f"{k}: {len(v)}" for k, v in t.items()]),
+                )
+            print(
+                f"{self.__class__.__name__}: vocabulary sizes: in: {len(self._cache.in_vocabulary)}, "
+                f"out: {len(self._cache.out_vocabulary)}"
+            )
+            print(
+                f"{self.__class__.__name__}: max input length: {self._cache.max_in_len}, "
+                f"max output length: {self._cache.max_out_len}"
+            )
+            print(
+                f"{self.__class__.__name__} sum length histogram: {self.hist_to_text(self._cache.sum_len_histogram)}"
+            )
+            print(
+                f"{self.__class__.__name__} in length histogram: {self.hist_to_text(self._cache.in_len_histogram)}"
+            )
+            print(
+                f"{self.__class__.__name__} out length histogram: {self.hist_to_text(self._cache.out_len_histogram)}"
+            )
 
         self.my_indices = []
         for t in split_type:
@@ -205,7 +234,7 @@ class TextDataset(torch.utils.data.Dataset):
             "in": np.asarray(in_seq, np.int16),
             "out": np.asarray(out_seq, np.int16),
             "in_len": len(in_seq),
-            "out_len": len(out_seq)
+            "out_len": len(out_seq),
         }
 
     def get_output_size(self):
@@ -215,8 +244,10 @@ class TextDataset(torch.utils.data.Dataset):
         return len(self._cache.in_vocabulary)
 
     def start_test(self) -> TextSequenceTestState:
-        return TextSequenceTestState(lambda x: " ".join(self.in_vocabulary(x)), 
-                                     lambda x: " ".join(self.out_vocabulary(x)))
+        return TextSequenceTestState(
+            lambda x: " ".join(self.in_vocabulary(x)),
+            lambda x: " ".join(self.out_vocabulary(x)),
+        )
 
     @property
     def max_in_len(self) -> int:

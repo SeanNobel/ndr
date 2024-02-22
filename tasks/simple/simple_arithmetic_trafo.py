@@ -4,7 +4,7 @@ from .transformer_classifier_mixin import TransformerClassifierMixin
 from .listops_data_mixin import ListopsDataMixin
 from .simple_arithmetics_data_mixin import SimpleArithmeticDataMixin
 from .. import task, args
-import framework
+import ndr.framework as framework
 
 
 @args

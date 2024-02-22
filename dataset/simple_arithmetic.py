@@ -4,7 +4,7 @@ from typing import Tuple, List, Dict, Any, Optional
 from dataclasses import dataclass
 import numpy as np
 from .helpers import rejection_sample_length_buckets, CacheLoaderMixin
-import framework
+import ndr.framework as framework
 from .sequence import TextClassifierTestState
 
 
@@ -23,10 +23,7 @@ class TranslatedSample:
 
 
 class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
-    OPS = [
-        ("+", lambda a, b: a + b),
-        ("*", lambda a, b: a * b)
-    ]
+    OPS = [("+", lambda a, b: a + b), ("*", lambda a, b: a * b)]
 
     SPLIT_SEEDS = {"train": 0, "valid": 123}
     VERSION = 2
@@ -35,8 +32,10 @@ class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
     out_vocabulary = None
 
     def config_id(self) -> str:
-        return f"{self.split}_{self.n_digits}_{self.depth}_{self.p_subop}_{self.max_length}_{self.n_samples}_"\
-               F"{self.rpn}_{self.n_nums}"
+        return (
+            f"{self.split}_{self.n_digits}_{self.depth}_{self.p_subop}_{self.max_length}_{self.n_samples}_"
+            f"{self.rpn}_{self.n_nums}"
+        )
 
     def format_op(self, a1, a2, op):
         return f"{a1} {a2}{op}" if self.rpn else f"({a1}{op}{a2})"
@@ -45,12 +44,14 @@ class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
         def sample_single_op(a1: Sample, a2: Sample) -> Sample:
             op = self.OPS[seed.randint(0, len(self.OPS))]
             expr = self.format_op(a1.input, a2.input, op[0])
-            return Sample(expr, op[1](a1.output, a2.output) % self.maxval, max(a1.depth, a2.depth) + 1)
+            return Sample(
+                expr, op[1](a1.output, a2.output) % self.maxval, max(a1.depth, a2.depth) + 1
+            )
 
         def get(d: int) -> Sample:
             if (d >= max_depth) or (seed.rand() > self.p_subop):
                 res = seed.randint(0, self.maxval)
-                assert res  < self.maxval
+                assert res < self.maxval
                 return Sample(str(res), res, 1)
             else:
                 a1 = get(d + 1)
@@ -70,21 +71,35 @@ class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
         for op in self.OPS:
             for a1 in range(self.maxval):
                 for a2 in range(self.maxval):
-                    res.append(Sample(self.format_op(a1, a2, op[0]), op[1](a1, a2) % self.maxval, 1))
+                    res.append(
+                        Sample(self.format_op(a1, a2, op[0]), op[1](a1, a2) % self.maxval, 1)
+                    )
         return res
 
-    def generate_balanced_set(self, depth: Tuple[int, int], seed, n_samples: int, exclude=set()) -> List[Sample]:
+    def generate_balanced_set(
+        self, depth: Tuple[int, int], seed, n_samples: int, exclude=set()
+    ) -> List[Sample]:
         def get_sample(seed: np.random.RandomState):
             while True:
                 s = self.get_one(seed, *depth)
                 if len(s.input) <= self.max_length:
                     return s
 
-        return rejection_sample_length_buckets(n_samples, depth, seed, get_sample, lambda s: s.depth,
-                                               lambda s: hash(s.input), exclude, limits=self.limits_per_depth)
+        return rejection_sample_length_buckets(
+            n_samples,
+            depth,
+            seed,
+            get_sample,
+            lambda s: s.depth,
+            lambda s: hash(s.input),
+            exclude,
+            limits=self.limits_per_depth,
+        )
 
     def translate_sample(self, s: Sample) -> TranslatedSample:
-        return TranslatedSample(self.in_vocabulary(s.input), self.out_vocabulary([str(s.output)])[0], s.depth)
+        return TranslatedSample(
+            self.in_vocabulary(s.input), self.out_vocabulary([str(s.output)])[0], s.depth
+        )
 
     def generate_dataset(self) -> List[Sample]:
         seed = np.random.RandomState(self.SPLIT_SEEDS[self.split])
@@ -94,23 +109,34 @@ class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
             res += self.generate_basic_set()
 
         if self.depth[1] > 2:
-            res += self.generate_balanced_set((max(self.depth[0], 3), self.depth[1]), seed, self.n_samples)
+            res += self.generate_balanced_set(
+                (max(self.depth[0], 3), self.depth[1]), seed, self.n_samples
+            )
 
         return [self.translate_sample(s) for s in res]
 
     def construct_vocab(self):
         if self.in_vocabulary is None:
             digits = [str(i) for i in range(self.maxval)]
-            SimpleArithmetics.in_vocabulary = framework.data_structures.WordVocabulary(["(", ")"] + [o[0] for o in self.OPS] + digits)
+            SimpleArithmetics.in_vocabulary = framework.data_structures.WordVocabulary(
+                ["(", ")"] + [o[0] for o in self.OPS] + digits
+            )
             SimpleArithmetics.out_vocabulary = framework.data_structures.WordVocabulary(digits)
 
-
-    def __init__(self, split: str, n_digits: int, depth: Tuple[int, int], p_subop: float, max_length: int,
-                 n_samples: int, rpn: bool = False, n_nums: Optional[int] = None):
-
+    def __init__(
+        self,
+        split: str,
+        n_digits: int,
+        depth: Tuple[int, int],
+        p_subop: float,
+        max_length: int,
+        n_samples: int,
+        rpn: bool = False,
+        n_nums: Optional[int] = None,
+    ):
         def n_possible(depth: int) -> int:
             def n(depth: int) -> int:
-                return 0 if depth == 0 else (self.maxval + len(self.OPS) * n(depth - 1)**2)
+                return 0 if depth == 0 else (self.maxval + len(self.OPS) * n(depth - 1) ** 2)
 
             return n(depth) - n(depth - 1)
 
@@ -119,16 +145,24 @@ class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
         assert 1 < depth[0] <= depth[1]
 
         self.rpn = rpn
-        self.n_digits, self.depth, self.p_subop, self.max_length, self.split, self.n_samples = \
-            n_digits, depth, p_subop, max_length, split, n_samples
+        (
+            self.n_digits,
+            self.depth,
+            self.p_subop,
+            self.max_length,
+            self.split,
+            self.n_samples,
+        ) = (n_digits, depth, p_subop, max_length, split, n_samples)
         self.n_nums = n_nums or self.N_NUMS
-        self.maxval = int(self.n_nums ** self.n_digits)
+        self.maxval = int(self.n_nums**self.n_digits)
 
-        self.limits_per_depth = {i: int(min(n_possible(i), n_samples*2) * 0.75) for i in range(depth[0], depth[1]+1)}
+        self.limits_per_depth = {
+            i: int(min(n_possible(i), n_samples * 2) * 0.75)
+            for i in range(depth[0], depth[1] + 1)
+        }
 
         self.construct_vocab()
         self.data = self.load_cache()
-
 
     def __getitem__(self, item: int) -> Dict[str, Any]:
         return {
@@ -136,12 +170,15 @@ class SimpleArithmetics(CacheLoaderMixin, torch.utils.data.Dataset):
             "out": self.data[item].output,
             "in_len": len(self.data[item].input),
             "out_len": 1,
-            "depth": self.data[item].depth
+            "depth": self.data[item].depth,
         }
 
     def __len__(self) -> int:
         return len(self.data)
 
     def start_test(self) -> TextClassifierTestState:
-        return TextClassifierTestState(lambda x: " ".join(self.in_vocabulary(x)),
-                                       lambda x: self.out_vocabulary([x])[0], max_bad_samples=100)
+        return TextClassifierTestState(
+            lambda x: " ".join(self.in_vocabulary(x)),
+            lambda x: self.out_vocabulary([x])[0],
+            max_bad_samples=100,
+        )

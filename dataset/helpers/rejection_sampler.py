@@ -1,14 +1,19 @@
 import numpy as np
 from typing import Callable, List, Any, Tuple, Optional, Dict
-import framework
+import ndr.framework as framework
 import multiprocessing
 import math
 from tqdm import tqdm
 
 
-def rejection_sample(n_samples: int, seed: np.random.RandomState, sampler: Callable[[np.random.RandomState], Any],
-                     test: Callable[[Any], bool], get_hash: Callable[[Any], int], exclude=set()) -> List[Any]:
-
+def rejection_sample(
+    n_samples: int,
+    seed: np.random.RandomState,
+    sampler: Callable[[np.random.RandomState], Any],
+    test: Callable[[Any], bool],
+    get_hash: Callable[[Any], int],
+    exclude=set(),
+) -> List[Any]:
     def get_samples(seed):
         seed = np.random.RandomState(seed)
         res = []
@@ -25,7 +30,7 @@ def rejection_sample(n_samples: int, seed: np.random.RandomState, sampler: Calla
 
     known = exclude.copy()
 
-    pbar = tqdm(total = n_samples)
+    pbar = tqdm(total=n_samples)
     with framework.utils.ParallelMapPool(get_samples) as ppool:
         while len(data) < n_samples:
             seeds = [seed_start + seed_offset * nproc + i for i in range(nproc)]
@@ -55,12 +60,16 @@ def rejection_sample(n_samples: int, seed: np.random.RandomState, sampler: Calla
     return data
 
 
-def rejection_sample_length_buckets(n_samples: int, length_range: Tuple[int, int],
-        seed: np.random.RandomState, sampler: Callable[[int], Any],
-        get_length: Callable[[Any], int], get_hash: Callable[[Any], int], exclude=set(),
-        limits: Optional[Dict[int, int]] = None) -> List[Any]:
-
-    
+def rejection_sample_length_buckets(
+    n_samples: int,
+    length_range: Tuple[int, int],
+    seed: np.random.RandomState,
+    sampler: Callable[[int], Any],
+    get_length: Callable[[Any], int],
+    get_hash: Callable[[Any], int],
+    exclude=set(),
+    limits: Optional[Dict[int, int]] = None,
+) -> List[Any]:
     if limits is None:
         limits = {}
 
