@@ -1,6 +1,5 @@
 import torch
 import torch.nn
-from torch.nn import Transformer
 from ndr.layers.layer_with_visualization import LayerWithVisualization
 from ndr.layers.regularized_layer import RegularizedLayer
 from typing import Optional, Dict, Any
@@ -9,6 +8,7 @@ from .direction_sensitive_geometric import (
     DirectionSensitiveGeometricAttentionMyInit,
     AttentionMask,
 )
+from termcolor import cprint
 
 
 class NDRGeometric(RegularizedLayer, LayerWithVisualization):
@@ -59,13 +59,16 @@ class NDRGeometric(RegularizedLayer, LayerWithVisualization):
         self.reset_parameters()
 
     def forward(self, src: torch.Tensor, mask: Optional[AttentionMask] = None) -> torch.Tensor:
-        if mask is None:
-            mask = AttentionMask(
-                None,
-                torch.isinf(
-                    Transformer.generate_square_subsequent_mask(src.shape[1], src.device)
-                ),
-            )
+        # if mask is None:
+        #     cprint(src.shape, "yellow")
+        #     cprint(src.device, "yellow")
+        #     mask = torch.isinf(
+        #         Transformer.generate_square_subsequent_mask(
+        #             sz=src.shape[1]
+        #         )  # , device=src.device)
+        #     )
+        #     cprint(mask, "yellow")
+        #     mask = AttentionMask(None, mask)
 
         input = self.att(src, src, mask)
 

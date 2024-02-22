@@ -37,6 +37,10 @@ class MultiHeadAttentionBase(LayerWithVisualization):
     def apply_logit_masks(
         logits: torch.Tensor, mask: Optional[AttentionMask], val: float = float("-inf")
     ) -> torch.Tensor:
+        if mask is None:
+            return logits
+
+        # FIXME: Trying to access attributes of possibly None object.
         if mask.position_mask is not None:
             # [..., N_out, N_in], broadcast works
             logits = logits.masked_fill(mask.position_mask, val)
